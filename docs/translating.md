@@ -1,7 +1,9 @@
 # Contributing interface translations
 
 Gen1Recomp can include more interface languages alongside English and Spanish.
-Contributions are welcome from fluent translators and reviewers.
+Contributions and fluent-language reviews are welcome. Experimental technical
+drafts for French, German, Italian, and Brazilian Portuguese are included;
+each remains pending native review.
 
 Interface translations cover the launcher, Settings, ROM and save import,
 save slots, the mod browser, notices, and other text written by Gen1Recomp.
@@ -32,11 +34,17 @@ complete example. Copy it to a file named for the new language, update its
 return {
   id = "fr-FR",
   name = "Français",
+  reviewStatus = "pending-native-review",
   strings = {
     ["Delete"] = "Supprimer",
   },
 }
 ```
+
+Add the module once to [`src/locales/registry.lua`](../src/locales/registry.lua).
+Catalog files are deliberately registered in one explicit ordered list, so a
+misspelled or unfinished file cannot silently become a user-facing language.
+Adding the file without registering it does not expose it in Settings.
 
 The English text inside square brackets is the catalog key and must stay
 unchanged. Translate only the value after `=`. Use natural wording rather than
@@ -70,6 +78,10 @@ A complete language contribution should include:
    truncation;
 7. a note identifying the fluent-language reviewer, or stating that review is
    still needed.
+
+Keep `reviewStatus = "pending-native-review"` until that review is complete.
+After a fluent reviewer has checked the whole catalog in context, change it to
+`native-reviewed` and record the review in the contribution.
 
 Languages using a new writing system may need additional font work. For
 example, Chinese, Japanese, or Korean must be checked for missing glyphs and

@@ -6,12 +6,17 @@ content and from translation mods.
 
 ## Current support
 
-The application interface supports English (`en`) and Spanish for Spain
-(`es-ES`). The implementation includes early locale startup, immediate
-language switching, persistence, launcher Settings, ROM/save/mod import
-surfaces, save-slot management, mod manager/browser chrome, notices,
-confirmations, application-owned errors, responsive controls, and ROM-free
-regression coverage.
+The release-ready application interface supports English (`en`) and
+native-reviewed Spanish for Spain (`es-ES`). Experimental technical catalogs
+are also included for French (`fr-FR`), German (`de-DE`), Italian (`it-IT`),
+and Brazilian Portuguese (`pt-BR`). Those four catalogs pass structural and
+formatting checks but remain pending fluent native review.
+
+The implementation includes early locale startup, immediate language
+switching, persistence, launcher Settings, ROM/save/mod import surfaces,
+save-slot management, mod manager/browser chrome, notices, confirmations,
+application-owned errors, responsive controls, and ROM-free regression
+coverage.
 
 Automated tests cover the locale boundary and the main ROM-free application
 surfaces.
@@ -27,14 +32,15 @@ The selected language is an application preference. It does **not** change the
 language of the imported Pokémon ROM, cartridge-derived dialogue, species,
 items, moves, maps, Pokédex, battle script, or other gameplay content.
 
-The first built-in locales are English (`en`) and Spanish (`es-ES`). The
-architecture must let upstream add further built-in locales by contributing
-metadata and a catalog, without introducing an external language-pack system.
+English (`en`) is the source locale and Spanish (`es-ES`) is the first
+native-reviewed translation. Further built-in locales are added through one
+catalog and one explicit registry entry, without introducing an external
+language-pack system.
 
 Locale identifiers use canonical BCP 47 tags. The English source locale uses
 the language-only `en` tag because the application does not define a regional
-English variant. Spanish uses the regional `es-ES` tag for the built-in Spain
-catalog.
+English variant. Translated catalogs use the appropriate language and regional
+tag: `es-ES`, `fr-FR`, `de-DE`, `it-IT`, and `pt-BR`.
 
 ## Upstream context
 
@@ -77,6 +83,12 @@ part of the host application, including surfaces shown while a game is running:
 
 A host overlay opened over a running game is still application UI and uses the
 selected interface locale.
+
+Application-facing game labels use the official regional version name where
+one exists. A locale without an official localized Gen 1 release keeps the
+original English game title. This changes only interface wording: it does not
+claim support for a different regional ROM. Desktop file-picker titles and file
+type descriptions are application UI as well and follow the selected locale.
 
 ## Application/game boundary
 
@@ -189,6 +201,9 @@ This rule is language-neutral. Responsive tests may inject deliberately long
 fixture strings into an existing locale for the duration of the test; doing so
 does not register or ship a new language.
 
+The touch-controls editor follows the same rule: header actions and card
+controls stack when their measured labels no longer fit beside one another.
+
 ## Persistence
 
 The locale belongs in the existing global `options.lua` table, alongside other
@@ -199,7 +214,11 @@ The stored value is a stable BCP 47 locale identifier such as:
 
 - `en` -- English source/default;
 - `es-ES` -- Español;
-- future examples: `fr-FR`, `de-DE`, `it-IT`, `pt-BR`, `ja-JP`, `zh-CN`.
+- `fr-FR` -- Français (native review pending);
+- `de-DE` -- Deutsch (native review pending);
+- `it-IT` -- Italiano (native review pending);
+- `pt-BR` -- Português (Brasil) (native review pending);
+- future writing-system examples: `ja-JP`, `zh-CN`.
 
 Unknown, malformed, or removed locale identifiers fall back safely to `en`.
 Loading an older `options.lua` with no locale field also yields `en`.
@@ -222,8 +241,14 @@ Catalogs are data committed to the repository. A locale module contains:
 
 - stable BCP 47 locale id;
 - native display name;
+- explicit linguistic review status;
 - source-string -> translated-string map;
 - optional metadata needed later for script/font coverage.
+
+Translated modules are listed once in `src/locales/registry.lua`. That ordered
+registry is the single source for runtime lookup, the Settings cycle, and the
+catalog validation gate. A catalog file is not automatically exposed merely
+because it exists on disk.
 
 Source keys remain English text. Context-qualified keys may be used only when
 one English source has genuinely different meanings. This keeps diffs readable
@@ -288,9 +313,9 @@ options parse and any initial English flash.
 
 ## Fonts and Unicode
 
-Spanish must use natural `es-ES`, including characters such as `á`, `é`, `í`,
-`ó`, `ú`, `ñ`, `ü`, `¿`, and `¡` where the UI font supports them. ASCII-only
-Spanish is not acceptable for normal application surfaces.
+Translations must use their natural Unicode spelling. For example, Spanish
+keeps `á`, `é`, `í`, `ó`, `ú`, `ñ`, `ü`, `¿`, and `¡`; the other Latin-script
+catalogs keep their accents and punctuation.
 
 Upstream already distinguishes two relevant rendering paths:
 
@@ -302,13 +327,14 @@ localization must not depend on the ROM font simply because an overlay appears
 while a game is running. Host-owned overlays should use an application-capable
 font path or explicit host glyph coverage.
 
-Future locales such as Japanese or Chinese require catalog metadata/tests that
-verify font coverage. Adding those locales must not require changing cartridge
-text or the imported ROM.
+Future locales using another writing system require equivalent catalog, font,
+and layout checks. Adding them must not require changing cartridge text or the
+imported ROM.
 
 ## Architecture summary
 
-- `AppLocale` owns built-in locale metadata and source-as-key catalogs.
+- `AppLocale` owns lookup and fallback; `src/locales/registry.lua` owns the
+  ordered built-in catalog list.
 - `interfaceLocale` persists in the global `options.lua` file.
 - Launcher Settings exposes `Interface Language`.
 - Startup applies the persisted locale before the first application frame.
@@ -318,15 +344,15 @@ text or the imported ROM.
 - Automated gates detect stale or missing keys and incompatible format
   directives.
 
-This is intentionally not a Spanish-specific branch in the code. `es-ES` is
-only the first non-English catalog.
+This is intentionally not a Spanish-specific design. `es-ES` is the first
+native-reviewed non-English catalog; additional catalogs use the same path.
 
 ## Tests and validation
 
 Automated coverage includes:
 
 - `en` by default;
-- explicit `es-ES` selection;
+- selection, native display names, and cycling for every registered locale;
 - persistence and reload of `interfaceLocale`;
 - unknown locale -> `en`;
 - missing source -> English;
@@ -341,7 +367,7 @@ Automated coverage includes:
 - compatibility with the current mod `Strings()` registry;
 - inventory detection for new untranslated application strings;
 - stale/orphan detection after an English source key changes;
-- UTF-8/font coverage for built-in catalogs;
+- catalog/format validation and bundled UI-font fallback attachment;
 - localized headers retain their current compact layout when possible and
   reflow without overlap, clipping, or lost list height when strings are long.
 
@@ -351,8 +377,8 @@ launcher/import/mod suites cover responsive layouts and application/gameplay
 localization boundaries. Desktop and narrow/mobile validation remains useful
 because translated labels expose sizing assumptions that English can hide.
 `tests/engine/launcher_slot_header_locale_test.lua` covers the save-slot header
-with source strings, longer localized fixtures, and an action wider than one
-row; no ROM or additional locale is required.
+with source strings, longer localized fixtures, an action wider than one row,
+and unbroken compound words; no ROM or additional locale is required.
 
 ## Adding a built-in locale
 

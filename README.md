@@ -81,9 +81,14 @@ audio channel programs copied out of the verified ROM.
 ### Interface language
 
 The launcher and other Gen1Recomp-owned application surfaces support English
-(`en`, the default) and Spanish for Spain (`es-ES`). Change the language under
-**Settings -> Interface Language**; visible application UI refreshes without a
-restart and the preference is shared by Red, Blue, and Yellow.
+(`en`, the default) and native-reviewed Spanish for Spain (`es-ES`). This
+build also includes experimental technical drafts for French (`fr-FR`), German
+(`de-DE`), Italian (`it-IT`), and Brazilian Portuguese (`pt-BR`). Those four
+drafts still require fluent native review before they are release-ready.
+
+Change the language under **Settings -> Interface Language**; visible
+application UI refreshes without a restart and the preference is shared by
+Red, Blue, and Yellow.
 
 This setting does not translate cartridge dialogue, battles, species, moves,
 items, Pokédex data, ROM-derived text, or text supplied by third-party mods.

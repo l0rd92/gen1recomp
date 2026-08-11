@@ -15,8 +15,10 @@ change so labels update immediately.
 
 Service-layer mod-index messages use locale-neutral `AppMessage` descriptors;
 `RomImporter` translates them only at the UI boundary. Index descriptions,
-mod metadata, and other third-party content remain untouched. English is `en`
-and the first translated catalog is Spain Spanish (`es-ES`). See
+mod metadata, and other third-party content remain untouched. English is `en`;
+Spain Spanish (`es-ES`) is native-reviewed. French, German, Italian, Brazilian
+Portuguese is available as an experimental technical draft pending fluent
+native review. See
 [`localization.md`](localization.md) for the architecture and contribution
 rules.
 
@@ -251,7 +253,8 @@ When both fit, it keeps the original one-row layout. Otherwise the complete
 title remains above the complete button, the header reserves the second row
 before the slot list is positioned, and the optional slot count appears only
 when the title row still has room. A button wider than the card interior wraps
-its label inside a full-width control. No locale-specific width or abbreviated
+its label inside a full-width control. Long words without spaces are split only
+at UTF-8 character boundaries. No locale-specific width or abbreviated
 translation is part of this decision. The ROM-free regression is
 `tests/engine/launcher_slot_header_locale_test.lua`.
 
