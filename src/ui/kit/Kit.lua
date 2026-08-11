@@ -257,6 +257,40 @@ end
 local wrapCache = {}
 wrapCacheRef = wrapCache
 
+-- Font:getWrap normally breaks on whitespace, but a translated label can
+-- still contain a single token wider than its container (a compound word,
+-- URL, or identifier).  Split only those overwide lines, at UTF-8 character
+-- boundaries, so callers that reserve wrapped height can rely on every line
+-- fitting the width they measured.
+local function splitToWidth(str, w, measure)
+  local function width(text)
+    local ok, value = pcall(measure, text)
+    return ok and tonumber(value) or 0
+  end
+  if str == "" or width(str) <= w then return { str } end
+  local out, chunk, i = {}, "", 1
+  while i <= #str do
+    local first = str:byte(i)
+    local bytes = first >= 0xF0 and 4 or first >= 0xE0 and 3
+      or first >= 0xC0 and 2 or 1
+    local char = str:sub(i, math.min(#str, i + bytes - 1))
+    local candidate = chunk .. char
+    if chunk ~= "" and width(candidate) > w then
+      out[#out + 1] = chunk
+      chunk = char
+    else
+      chunk = candidate
+    end
+    i = i + bytes
+  end
+  if chunk ~= "" then out[#out + 1] = chunk end
+  return out
+end
+
+function Kit.splitToWidth(str, w, measure)
+  return splitToWidth(tostring(str or ""), w, measure)
+end
+
 function Kit.wrapLines(name, str, w)
   str = tostring(str or "")
   if str == "" or w <= 0 then return nil end
@@ -266,7 +300,14 @@ function Kit.wrapLines(name, str, w)
   local f = font(name)
   if not f then return nil end
   local ok, _, wrapped = pcall(f.getWrap, f, str, w)
-  lines = (ok and wrapped) or { str }
+  local rawLines = (ok and wrapped) or { str }
+  lines = {}
+  for _, line in ipairs(rawLines) do
+    local parts = splitToWidth(line, w, function(part)
+      return f:getWidth(part)
+    end)
+    for _, part in ipairs(parts) do lines[#lines + 1] = part end
+  end
   wrapCache[key] = lines
   return lines
 end

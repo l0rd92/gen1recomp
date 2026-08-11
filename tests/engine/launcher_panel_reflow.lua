@@ -64,6 +64,13 @@ local function drawAndCapture(imp)
   return table.concat(seen, "\n")
 end
 
+-- Wrapped text is emitted as one draw call per visible line.  Rejoin only the
+-- separators introduced by the capture helper so an assertion can verify the
+-- complete message without requiring it to fit on one physical line.
+local function containsVisibleText(captured, expected)
+  return captured:gsub("\n", ""):find(expected, 1, true) ~= nil
+end
+
 -- ------------------------------------- a failed import explains itself
 -- setError stores the reason on imp.detail; the ROM card must print it, not
 -- just the "Import failed" headline above it.  Checked on the reporter's
@@ -77,7 +84,7 @@ failed.tab = "red"
 local text = drawAndCapture(failed)
 check(text:find("Import failed", 1, true) ~= nil,
   "a failed import prints its headline")
-check(text:find(REASON, 1, true) ~= nil,
+check(containsVisibleText(text, REASON),
   "a failed import prints the REASON it failed, not just the headline")
 
 -- The same on a desktop window, so the detail is not an artefact of one shape.
@@ -85,7 +92,7 @@ window(1280, 720)
 local failedWide = freshLauncher()
 failedWide:setError(REASON, "red")
 failedWide.tab = "red"
-check(drawAndCapture(failedWide):find(REASON, 1, true) ~= nil,
+check(containsVisibleText(drawAndCapture(failedWide), REASON),
   "the failure reason survives on a desktop window too")
 
 -- ------------------------------- settings labels stay readable in portrait

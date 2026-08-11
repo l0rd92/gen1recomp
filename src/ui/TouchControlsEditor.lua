@@ -147,24 +147,50 @@ function Editor.draw()
   local btnH = 40 * s
   local btnW = 100 * s
 
+  local titleLabel = AppLocale("Touch Controls")
+  local doneLabel, resetLabel = AppLocale("Done"), AppLocale("Reset")
+  local actionGap = 10 * s
+  local doneW = math.max(btnW, Editor.fonts.btn:getWidth(doneLabel) + 24 * s)
+  local resetW = math.max(btnW, Editor.fonts.btn:getWidth(resetLabel) + 24 * s)
+  local innerW = ww - 2 * pad
+  local actionsStacked = doneW + actionGap + resetW > innerW
+  if actionsStacked then
+    doneW, resetW = math.min(doneW, innerW), math.min(resetW, innerW)
+  end
+  local titleW = Editor.fonts.title:getWidth(titleLabel)
+  local actionsW = actionsStacked and math.max(doneW, resetW)
+    or (doneW + actionGap + resetW)
+  local inlineHeader = not actionsStacked
+    and titleW + actionGap + actionsW <= innerW
+  local titleH = Editor.fonts.title:getHeight()
+  local headerH = barH
+  if not inlineHeader then
+    headerH = 4 * s + titleH + actionGap + btnH
+      + (actionsStacked and (actionGap + btnH) or 0)
+  end
+
   -- top bar (inside the safe area so it clears the notch / status bar)
   col(PAL.card, 0.92)
-  love.graphics.rectangle("fill", 0, 0, fullW, oy + barH + pad)
+  love.graphics.rectangle("fill", 0, 0, fullW, oy + headerH + pad)
   col(PAL.stroke, 0.35)
   love.graphics.setLineWidth(1)
-  love.graphics.line(0, oy + barH + pad, fullW, oy + barH + pad)
+  love.graphics.line(0, oy + headerH + pad, fullW, oy + headerH + pad)
 
   love.graphics.setFont(Editor.fonts.title)
   col(PAL.white)
-  love.graphics.print(AppLocale("Touch Controls"), ox + pad, oy + pad + 4 * s)
+  love.graphics.print(titleLabel, ox + pad, oy + pad + 4 * s)
 
   -- Done / Reset
-  local doneLabel, resetLabel = AppLocale("Done"), AppLocale("Reset")
-  local doneW = math.max(btnW, Editor.fonts.btn:getWidth(doneLabel) + 24 * s)
-  local resetW = math.max(btnW, Editor.fonts.btn:getWidth(resetLabel) + 24 * s)
-  local done = { x = ox + ww - pad - doneW, y = oy + pad + (barH - btnH) / 2,
+  local actionY = inlineHeader and (oy + pad + (barH - btnH) / 2)
+    or (oy + pad + 4 * s + titleH + actionGap)
+  local doneY = actionY + (actionsStacked and (btnH + actionGap) or 0)
+  local done = { x = ox + ww - pad - doneW, y = doneY,
                  w = doneW, h = btnH }
-  local reset = { x = done.x - 10 * s - resetW, y = done.y, w = resetW, h = btnH }
+  local reset = {
+    x = actionsStacked and (ox + ww - pad - resetW)
+      or (done.x - actionGap - resetW),
+    y = actionY, w = resetW, h = btnH,
+  }
   Editor.rects.done, Editor.rects.reset = done, reset
 
   local function chromeBtn(r, label, fill)
@@ -182,9 +208,16 @@ function Editor.draw()
   chromeBtn(done, doneLabel, PAL.green)
 
   -- enable toggle card
-  local cardY = oy + barH + pad + 14 * s
-  local cardH = 64 * s
+  local cardY = oy + headerH + pad + 14 * s
+  local baseCardH = 64 * s
   local cardX, cardW = ox + pad, ww - 2 * pad
+  local toggleLabel = Editor.enabled and AppLocale("Disable") or AppLocale("Enable")
+  local toggleW = math.min(cardW - 32 * s,
+    math.max(110 * s, Editor.fonts.btn:getWidth(toggleLabel) + 24 * s))
+  local toggleTextW = Editor.fonts.body:getWidth(AppLocale("On-screen controls"))
+  local toggleStacked = 16 * s + toggleTextW + actionGap
+    + toggleW + 16 * s > cardW
+  local cardH = baseCardH + (toggleStacked and (btnH + 8 * s) or 0)
   col(PAL.card, 0.88)
   roundRect("fill", cardX, cardY, cardW, cardH, 12 * s)
   col(PAL.stroke, 0.4)
@@ -196,44 +229,51 @@ function Editor.draw()
                       cardY + 12 * s)
   love.graphics.setFont(Editor.fonts.btn)
   local on = Editor.enabled
+  local stateLabel = on and AppLocale("ON") or AppLocale("OFF")
   col(on and PAL.green or PAL.red)
-  love.graphics.print(AppLocale(on and "ON" or "OFF"), cardX + 16 * s,
+  love.graphics.print(stateLabel, cardX + 16 * s,
                       cardY + 34 * s)
 
-  local toggleW = 110 * s
   local toggle = {
     x = cardX + cardW - 16 * s - toggleW,
-    y = cardY + (cardH - btnH) / 2,
+    y = toggleStacked and (cardY + baseCardH)
+      or (cardY + (baseCardH - btnH) / 2),
     w = toggleW, h = btnH,
   }
   Editor.rects.toggle = toggle
-  chromeBtn(toggle, on and AppLocale("Disable") or AppLocale("Enable"),
-            on and PAL.red or PAL.green)
+  chromeBtn(toggle, toggleLabel, on and PAL.red or PAL.green)
 
   -- size card (#633): -/+ resize every control in the orientation on
   -- screen; the heading names it so it is plain the other one is untouched
   local sizeY = cardY + cardH + 10 * s
+  local orient = TouchControls.orientation == "landscape"
+    and AppLocale("Landscape") or AppLocale("Portrait")
+  local sizeLabel = AppLocale("Button size (%s)", orient)
+  local stepW = 52 * s
+  local stepGap = 10 * s
+  local stepsW = 2 * stepW + stepGap
+  local sizeStacked = 16 * s + Editor.fonts.body:getWidth(sizeLabel)
+    + actionGap + stepsW + 16 * s > cardW
+  local sizeCardH = baseCardH + (sizeStacked and (btnH + 8 * s) or 0)
   col(PAL.card, 0.88)
-  roundRect("fill", cardX, sizeY, cardW, cardH, 12 * s)
+  roundRect("fill", cardX, sizeY, cardW, sizeCardH, 12 * s)
   col(PAL.stroke, 0.4)
-  roundRect("line", cardX, sizeY, cardW, cardH, 12 * s)
+  roundRect("line", cardX, sizeY, cardW, sizeCardH, 12 * s)
 
   love.graphics.setFont(Editor.fonts.body)
   col(PAL.label)
-  local orient = TouchControls.orientation == "landscape"
-    and AppLocale("Landscape") or AppLocale("Portrait")
-  love.graphics.print(AppLocale("Button size (%s)", orient),
-                      cardX + 16 * s, sizeY + 12 * s)
+  love.graphics.print(sizeLabel, cardX + 16 * s, sizeY + 12 * s)
   love.graphics.setFont(Editor.fonts.btn)
   col(PAL.white)
   love.graphics.print(
     string.format("%d%%", math.floor((bucket.scale or 1) * 100 + 0.5)),
     cardX + 16 * s, sizeY + 34 * s)
 
-  local stepW = 52 * s
   local plus = { x = cardX + cardW - 16 * s - stepW,
-                 y = sizeY + (cardH - btnH) / 2, w = stepW, h = btnH }
-  local minus = { x = plus.x - 10 * s - stepW, y = plus.y, w = stepW, h = btnH }
+                 y = sizeStacked and (sizeY + baseCardH)
+                   or (sizeY + (baseCardH - btnH) / 2),
+                 w = stepW, h = btnH }
+  local minus = { x = plus.x - stepGap - stepW, y = plus.y, w = stepW, h = btnH }
   Editor.rects.sizeUp, Editor.rects.sizeDown = plus, minus
   chromeBtn(minus, "-", { 60, 70, 110 })
   chromeBtn(plus, "+", { 60, 70, 110 })
@@ -244,7 +284,8 @@ function Editor.draw()
   local hint = on
     and AppLocale("Drag each button to reposition, -/+ to resize. Portrait and landscape are saved separately when you tap Done.")
     or AppLocale("Controls are hidden in-game. Enable them to show and edit the layout.")
-  love.graphics.printf(hint, ox + pad, sizeY + cardH + 12 * s, ww - 2 * pad, "left")
+  love.graphics.printf(hint, ox + pad, sizeY + sizeCardH + 12 * s,
+    ww - 2 * pad, "left")
 
   -- the overlay itself (preview mode; dimmed when disabled)
   TouchControls:draw()

@@ -13,6 +13,7 @@ if not _G.love then _G.love = require("tests.love_stub") end
 local T = require("tests.modkit")
 local Kit = require("src.ui.kit.Kit")
 local Theme = require("src.ui.kit.Theme")
+local AppLocale = require("src.core.AppLocale")
 
 -- ---------------------------------------------------------------- page math
 -- pageBounds(page, total, perPage) -> first, last, clampedPage, pages
@@ -122,6 +123,53 @@ do
     "a zero budget means nothing fits, not everything fits")
   T.eq(Theme.ellipsize(font, "abc", 999), "abc",
     "text that already fits is returned untouched")
+
+  -- A third-party label with malformed bytes must not turn the defensive
+  -- wrapping path itself into a crash after Font:getWrap rejects it.
+  local bad = string.char(0xFF) .. "mod"
+  local okSplit, parts = pcall(Kit.splitToWidth, bad, 20, function()
+    error("UTF-8 decoding error", 0)
+  end)
+  T.check(okSplit and type(parts) == "table" and #parts == 1,
+    "width fallback leaves malformed third-party text render-safe")
+end
+
+-- Localized navigation actions remain complete and inside a pager at the
+-- narrow width used by a 640px two-column launcher.
+do
+  Kit.layout(640, 480)
+  local realCenterBold = Kit.textCenterBold
+  for _, locale in ipairs(AppLocale.available()) do
+    AppLocale.set(locale.id)
+    local drawn = {}
+    Kit.textCenterBold = function(name, text, ...)
+      drawn[tostring(text)] = true
+      return realCenterBold(name, text, ...)
+    end
+    Kit.audit = {}
+    Kit.pager(10, 10, 258, 2, 5, 1, "locale-pager")
+    local audit = Kit.audit
+    Kit.audit = nil
+    Kit.textCenterBold = realCenterBold
+
+    local prevLabel, nextLabel = AppLocale("< Prev"), AppLocale("Next >")
+    local prev, nextButton
+    for _, rect in ipairs(audit) do
+      if rect.class == "control" and rect.label == prevLabel then prev = rect end
+      if rect.class == "control" and rect.label == nextLabel then nextButton = rect end
+    end
+    T.check(prev and nextButton,
+      locale.id .. " pager exposes both localized navigation actions")
+    if prev and nextButton then
+      T.check(prev.x >= 10 and nextButton.x + nextButton.w <= 268,
+        locale.id .. " pager actions stay inside the narrow row")
+      T.check(prev.x + prev.w <= nextButton.x,
+        locale.id .. " pager actions do not overlap")
+    end
+    T.check(drawn[prevLabel] and drawn[nextLabel],
+      locale.id .. " pager draws both action labels without ellipsizing")
+  end
+  AppLocale.set("en")
 end
 
 T.finish("ui_kit_pagination")
