@@ -7,16 +7,32 @@
 -- opt into this module instead.
 
 local Logger = require("src.core.Logger")
-local Spanish = require("src.locales.es_es")
+local Catalogs = require("src.locales.registry")
 
 local AppLocale = {}
 
 local SOURCE_LOCALE = "en"
 local locales = {
-  [SOURCE_LOCALE] = { id = SOURCE_LOCALE, name = "English", strings = {} },
-  [Spanish.id] = Spanish,
+  [SOURCE_LOCALE] = {
+    id = SOURCE_LOCALE,
+    name = "English",
+    reviewStatus = "source",
+    strings = {},
+  },
 }
-local order = { SOURCE_LOCALE, Spanish.id }
+local order = { SOURCE_LOCALE }
+for _, catalog in ipairs(Catalogs) do
+  assert(type(catalog) == "table", "application locale catalog must be a table")
+  assert(type(catalog.id) == "string" and catalog.id ~= "",
+    "application locale catalog must have an id")
+  assert(type(catalog.name) == "string" and catalog.name ~= "",
+    "application locale catalog must have a name")
+  assert(type(catalog.strings) == "table",
+    "application locale catalog must have a strings table")
+  assert(not locales[catalog.id], "duplicate application locale: " .. catalog.id)
+  locales[catalog.id] = catalog
+  order[#order + 1] = catalog.id
+end
 local current = SOURCE_LOCALE
 local generation = 0
 local warned = {}
@@ -98,13 +114,33 @@ end
 function AppLocale.available()
   local out = {}
   for _, id in ipairs(order) do
-    out[#out + 1] = { id = id, name = locales[id].name }
+    out[#out + 1] = {
+      id = id,
+      name = locales[id].name,
+      reviewStatus = locales[id].reviewStatus,
+    }
   end
   return out
 end
 
 function AppLocale.displayName(id)
   return locales[AppLocale.normalize(id)].name
+end
+
+-- Application-facing game-version name. English callers may supply the
+-- wording their surface already used ("Red" or "Pokemon Red"); other
+-- locales use their catalog's display name, localized where an official name
+-- exists and left as the original title where it does not.
+function AppLocale.gameName(version, englishFallback)
+  if current == SOURCE_LOCALE and englishFallback then return englishFallback end
+  if version == "red" then
+    return AppLocale.context("Red", "launcher.gameName.red")
+  elseif version == "blue" then
+    return AppLocale.context("Blue", "launcher.gameName.blue")
+  elseif version == "yellow" then
+    return AppLocale.context("Yellow", "launcher.gameName.yellow")
+  end
+  return englishFallback or tostring(version)
 end
 
 function AppLocale.cycle(id, dir)
@@ -118,17 +154,21 @@ function AppLocale.cycle(id, dir)
   return order[nextIndex]
 end
 
-function AppLocale.lookup(source)
+function AppLocale.lookup(source, context)
   if current == SOURCE_LOCALE then return source end
   local catalog = locales[current] and locales[current].strings
-  local translated = catalog and catalog[source]
+  local key = context and (context .. "|" .. source) or source
+  local translated = catalog and catalog[key]
+  if type(translated) ~= "string" or translated == "" then
+    translated = context and catalog and catalog[source] or translated
+  end
   if type(translated) ~= "string" or translated == "" then return source end
   if not AppLocale.formatCompatible(source, translated) then
-    local key = current .. "\0" .. source
-    if not warned[key] then
-      warned[key] = true
+    local warningKey = current .. "\0" .. key
+    if not warned[warningKey] then
+      warned[warningKey] = true
       Logger.warn("app locale: translation of %q in %s has incompatible format directives -- using the source",
-        source, current)
+        key, current)
     end
     return source
   end
@@ -153,6 +193,19 @@ function AppLocale.text(source, ...)
   local text = AppLocale.lookup(source)
   if select("#", ...) == 0 then return text end
   local ok, result = pcall(string.format, text, ...)
+  if ok then return result end
+  local sourceOk, sourceResult = pcall(string.format, source, ...)
+  if sourceOk then return sourceResult end
+  return source
+end
+
+-- Disambiguates identical English sources used for different application
+-- concepts.  Catalogs store these as "context|source", while English and a
+-- missing translation still display the readable source rather than an id.
+function AppLocale.context(source, context, ...)
+  local translated = AppLocale.lookup(source, context)
+  if select("#", ...) == 0 then return translated end
+  local ok, result = pcall(string.format, translated, ...)
   if ok then return result end
   local sourceOk, sourceResult = pcall(string.format, source, ...)
   if sourceOk then return sourceResult end

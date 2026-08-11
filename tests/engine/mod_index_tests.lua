@@ -11,6 +11,8 @@ local T = require("tests.harness")
 local check, eq = T.check, T.eq
 local ModIndex = require("src.mods.ModIndex")
 local Json = require("src.link.Json")
+local AppLocale = require("src.core.AppLocale")
+local AppMessage = require("src.core.AppMessage")
 
 -- ------- source resolution: four ways to name one index
 
@@ -112,6 +114,41 @@ do
   eq(m.update_check, "ok", "update_check is kept")
   check(m.downloads == nil and m.first_release == nil and m.last_release == nil,
     "a feed without release stats parses them as absent")
+end
+
+-- Transport details remain searchable technical text, but the launcher owns
+-- the explanation around them.  A localized UI must not expose a bare English
+-- HTTP failure as its whole user-facing notice.
+do
+  local oldFetch = package.loaded["src.net.Fetch"]
+  local oldReadCache = ModIndex.readCache
+  package.loaded["src.net.Fetch"] = {
+    get = function() return {} end,
+    poll = function()
+      return { status = "error",
+        err = "HTTP 404 from https://example.test/index.json (<html lang=\"en\">)" }
+    end,
+    release = function() end,
+  }
+  ModIndex.readCache = function() return nil end
+
+  local h = ModIndex.beginFetch({ feed = "https://example.test/index.json" },
+    { force = true })
+  check(not select(1, ModIndex.pumpFetch(h)),
+    "an asynchronous index request starts before it completes")
+  local done, index, err = ModIndex.pumpFetch(h)
+  check(done and index == nil, "a failed asynchronous index request completes safely")
+  check(AppMessage.is(err), "a transport failure becomes a locale-neutral app message")
+  AppLocale.set("es-ES")
+  local shown = AppLocale.message(err)
+  check(shown:find("No se ha podido descargar el índice:", 1, true) == 1,
+    "the user-facing index failure follows the Spanish interface locale")
+  check(shown:find("HTTP 404", 1, true) ~= nil,
+    "the localized notice retains its searchable technical detail")
+  AppLocale.set("en")
+
+  ModIndex.readCache = oldReadCache
+  package.loaded["src.net.Fetch"] = oldFetch
 end
 
 -- release stats a feed can publish: total downloads and first/last dates

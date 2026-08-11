@@ -694,7 +694,13 @@ function ModIndex.pumpFetch(h)
     h.index, h.meta = index, meta
     return true, index, nil, meta
   end
-  h.err = h.parseErr or st.err or AppMessage("Could not download the index")
+  if h.parseErr then
+    h.err = h.parseErr
+  elseif st.err then
+    h.err = AppMessage("Could not download the index: %s", tostring(st.err))
+  else
+    h.err = AppMessage("Could not download the index")
+  end
   return true, nil, h.err
 end
 

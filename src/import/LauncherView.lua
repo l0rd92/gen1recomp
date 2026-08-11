@@ -34,7 +34,6 @@ local Layout = require("src.ui.kit.Layout")
 local Loader = require("src.ui.kit.Loader")
 local GameVersion = require("src.core.GameVersion")
 local Version = require("src.core.Version")
-local Strings = require("src.core.Strings")
 local AppLocale = require("src.core.AppLocale")
 
 local PAL = Theme.PAL
@@ -312,13 +311,6 @@ local function cartColor(version)
   return CART_COLOR[version] or PAL.green
 end
 
-local function localizedGameName(version, info)
-  if version == "red" then return AppLocale("Red") end
-  if version == "blue" then return AppLocale("Blue") end
-  if version == "yellow" then return AppLocale("Yellow") end
-  return info and (info.launcherName or info.displayName) or tostring(version)
-end
-
 local function modStatusColor(status)
   if status == "ok" then return AppLocale("Ready"), PAL.green end
   if status == "conflict" then return AppLocale("Conflict"), PAL.red end
@@ -462,9 +454,18 @@ local function buildHeader(imp, m)
   -- actually refer to these.  The colour rides the outline and the glyph at
   -- rest and becomes the fill when active, the same rule the buttons follow.
   local tabs = {
-    { id = "red",    letter = AppLocale("R"), label = AppLocale("RED"),    color = PAL.railRed },
-    { id = "blue",   letter = AppLocale("B"), label = AppLocale("BLUE"),   color = PAL.railBlue },
-    { id = "yellow", letter = AppLocale("Y"), label = AppLocale("YELLOW"), color = PAL.railGold },
+    { id = "red",
+      letter = AppLocale.context("R", "launcher.gameTab.red.short"),
+      label = AppLocale.context("RED", "launcher.gameTab.red"),
+      color = PAL.railRed },
+    { id = "blue",
+      letter = AppLocale.context("B", "launcher.gameTab.blue.short"),
+      label = AppLocale.context("BLUE", "launcher.gameTab.blue"),
+      color = PAL.railBlue },
+    { id = "yellow",
+      letter = AppLocale.context("Y", "launcher.gameTab.yellow.short"),
+      label = AppLocale.context("YELLOW", "launcher.gameTab.yellow"),
+      color = PAL.railGold },
     { id = "mods",   icon = imp._modsIcon, label = AppLocale("MODS") },
     { id = "find",   icon = imp._findIcon, label = AppLocale("FIND MODS") },
   }
@@ -603,7 +604,7 @@ local function romModel(imp, version, info, ready, locked)
   elseif imp.returning[version] then
     return { state = AppLocale("Update required"),
       detail = AppLocale("This build needs a few more things from your %s ROM. Re-import to continue.",
-        info.label),
+        AppLocale.gameName(version, info.label)),
       label = AppLocale("Re-import ROM"), enabled = true }
   end
   return { state = AppLocale("No ROM imported"),
@@ -703,12 +704,22 @@ local function captionLines(label, maxW)
   if Kit.captionWidth(label) <= maxW then return { label } end
   local lines, line = {}, ""
   for word in label:gmatch("%S+") do
-    local candidate = line == "" and word or (line .. " " .. word)
-    if line ~= "" and Kit.captionWidth(candidate) > maxW then
-      lines[#lines + 1] = line
-      line = word
+    if Kit.captionWidth(word) > maxW then
+      if line ~= "" then
+        lines[#lines + 1] = line
+        line = ""
+      end
+      local parts = Kit.splitToWidth(word, maxW, Kit.captionWidth)
+      for i = 1, #parts - 1 do lines[#lines + 1] = parts[i] end
+      line = parts[#parts] or ""
     else
-      line = candidate
+      local candidate = line == "" and word or (line .. " " .. word)
+      if line ~= "" and Kit.captionWidth(candidate) > maxW then
+        lines[#lines + 1] = line
+        line = word
+      else
+        line = candidate
+      end
     end
   end
   if line ~= "" then lines[#lines + 1] = line end
@@ -716,9 +727,8 @@ local function captionLines(label, maxW)
 end
 
 -- Measure the localized save-card header before the list gets its height
--- budget.  The source layout is preserved byte-for-byte in shape when title
--- and action fit together; otherwise the full action moves below the full
--- title.  A button that cannot fit even on its own row wraps inside the card.
+-- budget. Short labels keep the existing one-line layout; longer labels move
+-- onto another row. A button wider than the card wraps inside it.
 local function slotHeaderLayout(innerW, m, title, action)
   local gap = math.floor(8 * m.s)
   local titleLineH = Kit.textHeight("caption")
@@ -819,8 +829,8 @@ local function buildSlotCard(imp, x, y, w, availH, m, version, ready)
 
   -- The header carries "Import save": a .sav import CREATES a slot, so it
   -- belongs to the slot list rather than to the ROM card it used to sit in.
-  -- Measure the localized strings first: a future locale may need the action
-  -- on a second line even though English and Spanish fit side by side here.
+  -- Measure the localized strings before reserving the list area because the
+  -- header may grow by one or more rows.
   local slotTitle = AppLocale("SAVE SLOT")
   local savImportLabel = imp.isNX and AppLocale("Scan again")
     or AppLocale("Import save")
@@ -916,7 +926,7 @@ local function buildSlotCard(imp, x, y, w, availH, m, version, ready)
       ly = ly + Kit.textHeight("button") + math.floor(4 * m.s)
       local metaTxt
       if slot.exists and slot.meta then
-        metaTxt = Strings("%d badges - %s - %d caught", slot.meta.badges or 0,
+        metaTxt = AppLocale("%d badges - %s - %d caught", slot.meta.badges or 0,
           slot.meta.timeText or "0:00", slot.meta.dexCount or 0)
       else
         metaTxt = AppLocale("empty slot")
@@ -1024,7 +1034,8 @@ local function buildGamePanel(imp, x, y, w, availH, m, version)
   imp.panelVersion = version
   local info = GameVersion.info(version)
   local locked = info == nil
-  local gameName = localizedGameName(version, info)
+  local gameName = AppLocale.gameName(version,
+    info and (info.launcherName or info.displayName))
   local ready = (not locked) and imp.ready[version] or false
 
   -- title + status tag
@@ -1569,9 +1580,6 @@ end
 
 -- Pinned to the bottom of the window; returns the y it starts at, so the
 -- panels above know how much room they have.
--- Deliberately compact: at a large UI scale the footer is pure overhead
--- competing with the panel for a short window's height, so the mark and the
--- link share one line and the trust warning is capped at a single line.
 local function footerHeight(imp, m)
   -- Top pad + mark/update row + gap + the FULL wrapped trust message +
   -- bottom pad.  The message wraps to as many lines as it needs: truncating
@@ -2152,7 +2160,8 @@ local function buildGameManageModal(imp, m)
   local info = GameVersion.info(version)
   local ready = imp.ready[version] or false
   local mdl = romModel(imp, version, info, ready, info == nil)
-  local gameName = localizedGameName(version, info)
+  local gameName = AppLocale.gameName(version,
+    info and (info.launcherName or info.displayName))
   local saveDir = love.filesystem.getSaveDirectory
     and love.filesystem.getSaveDirectory() or nil
   -- The folder link is desktop-only: Android and NX have no browsable path to

@@ -458,7 +458,8 @@ function RomImporter:_setNxSavesInboxNotice(version)
   local saveDir = love.filesystem.getSaveDirectory()
   local rel = RomImporter.mtpHintPath(saveDir)
   if rel ~= "" and rel:sub(-1) ~= "/" then rel = rel .. "/" end
-  local game = GameVersion.info(version).displayName
+  local info = GameVersion.info(version)
+  local game = AppLocale.gameName(version, info.displayName)
   self.saveNotice = self.saveNotice or {}
   self.saveNotice[version] = {
     ok = true,
@@ -693,7 +694,8 @@ function RomImporter:rescanSavesAction(version)
   local seenHashes = loadImportedSavHashes(version)
   local okCount, failCount, skipCount = 0, 0, 0
   local lastOk, lastFail = nil, nil
-  local gameLabel = GameVersion.info(version).displayName
+  local gameInfo = GameVersion.info(version)
+  local gameLabel = AppLocale.gameName(version, gameInfo.displayName)
   for _, path in ipairs(candidates) do
     local data = love.filesystem.read(path)
     local hash = (type(data) == "string" and data ~= "") and sha1(data) or nil
@@ -801,7 +803,8 @@ function RomImporter:rescanAction(version)
     return
   end
   if #candidates > 0 then
-    local label = GameVersion.info(version).displayName
+    local info = GameVersion.info(version)
+    local label = AppLocale.gameName(version, info.displayName)
     self.notice = {
       version = version,
       status = AppLocale("No matching ROM found."),
@@ -937,7 +940,9 @@ end
 
 local function chooseRom(promptName)
   promptName = promptName or "Pokemon"
-  local prompt = shellSafe("Choose your " .. promptName .. " ROM")
+  local prompt = shellSafe(AppLocale("Choose your %s ROM", promptName))
+  local romFilter = shellSafe(AppLocale("Game Boy ROM"))
+  local allFilter = shellSafe(AppLocale("All files"))
   local platform = love.system.getOS()
   if platform == "OS X" then
     return commandOutput(
@@ -948,7 +953,8 @@ local function chooseRom(promptName)
       "Add-Type -AssemblyName System.Windows.Forms;",
       "$d=New-Object System.Windows.Forms.OpenFileDialog;",
       "$d.Title='" .. prompt .. "';",
-      "$d.Filter='Game Boy ROM (*.gb;*.gbc)|*.gb;*.gbc|All files (*.*)|*.*';",
+      "$d.Filter='" .. romFilter .. " (*.gb;*.gbc)|*.gb;*.gbc|"
+        .. allFilter .. " (*.*)|*.*';",
       -- copy the pick to a plain-ASCII temp name and answer with that:
       -- the console's OEM codepage would mangle a non-ASCII path
       -- (Pokémon -> Pok\x82mon) and io.open on Windows needs ANSI bytes,
@@ -964,11 +970,12 @@ local function chooseRom(promptName)
       'powershell -NoProfile -STA -Command "' .. script .. '"')
   elseif platform == "Linux" then
     local path = commandOutput(
-      ([[zenity --file-selection --title="%s" --file-filter="Game Boy ROM | *.gb *.gbc" 2>/dev/null]])
-        :format(prompt))
+      ([[zenity --file-selection --title="%s" --file-filter="%s | *.gb *.gbc" 2>/dev/null]])
+        :format(prompt, romFilter))
     if path then return path end
     return commandOutput(
-      [[kdialog --getopenfilename "$HOME" "*.gb *.gbc|Game Boy ROM" 2>/dev/null]])
+      ([[kdialog --getopenfilename "$HOME" "*.gb *.gbc|%s" 2>/dev/null]])
+        :format(romFilter))
   end
   return nil
 end
@@ -978,6 +985,8 @@ end
 -- ("mod") instead -- see RomImporter:chooseMod.
 local function chooseZip()
   local prompt = shellSafe(AppLocale("Choose a mod .zip"))
+  local modFilter = shellSafe(AppLocale("Mod archive"))
+  local allFilter = shellSafe(AppLocale("All files"))
   local platform = love.system.getOS()
   if platform == "OS X" then
     return commandOutput(
@@ -988,7 +997,8 @@ local function chooseZip()
       "Add-Type -AssemblyName System.Windows.Forms;",
       "$d=New-Object System.Windows.Forms.OpenFileDialog;",
       "$d.Title='" .. prompt .. "';",
-      "$d.Filter='Mod archive (*.zip)|*.zip|All files (*.*)|*.*';",
+      "$d.Filter='" .. modFilter .. " (*.zip)|*.zip|"
+        .. allFilter .. " (*.*)|*.*';",
       -- copy the pick to a plain-ASCII temp name and answer with that:
       -- the console's OEM codepage would mangle a non-ASCII path
       -- (Pokémon -> Pok\x82mon) and io.open on Windows needs ANSI bytes,
@@ -1004,11 +1014,12 @@ local function chooseZip()
       'powershell -NoProfile -STA -Command "' .. script .. '"')
   elseif platform == "Linux" then
     local path = commandOutput(
-      ([[zenity --file-selection --title="%s" --file-filter="Mod archive | *.zip" 2>/dev/null]])
-        :format(prompt))
+      ([[zenity --file-selection --title="%s" --file-filter="%s | *.zip" 2>/dev/null]])
+        :format(prompt, modFilter))
     if path then return path end
     return commandOutput(
-      [[kdialog --getopenfilename "$HOME" "*.zip|Mod archive" 2>/dev/null]])
+      ([[kdialog --getopenfilename "$HOME" "*.zip|%s" 2>/dev/null]])
+        :format(modFilter))
   end
   return nil
 end
@@ -1018,6 +1029,8 @@ end
 -- love.system.pickFile("sav") instead -- see RomImporter:chooseSaveImport.
 local function chooseSav()
   local prompt = shellSafe(AppLocale("Choose a .sav save file"))
+  local saveFilter = shellSafe(AppLocale("Game Boy save"))
+  local allFilter = shellSafe(AppLocale("All files"))
   local platform = love.system.getOS()
   if platform == "OS X" then
     return commandOutput(
@@ -1028,7 +1041,8 @@ local function chooseSav()
       "Add-Type -AssemblyName System.Windows.Forms;",
       "$d=New-Object System.Windows.Forms.OpenFileDialog;",
       "$d.Title='" .. prompt .. "';",
-      "$d.Filter='Game Boy save (*.sav)|*.sav|All files (*.*)|*.*';",
+      "$d.Filter='" .. saveFilter .. " (*.sav)|*.sav|"
+        .. allFilter .. " (*.*)|*.*';",
       -- copy the pick to a plain-ASCII temp name: io.open on Windows
       -- needs ANSI bytes, so a non-ASCII path (Pokémon -> Pok\x82mon)
       -- could never have been opened (#325, #665)
@@ -1042,11 +1056,12 @@ local function chooseSav()
       'powershell -NoProfile -STA -Command "' .. script .. '"')
   elseif platform == "Linux" then
     local path = commandOutput(
-      ([[zenity --file-selection --title="%s" --file-filter="Game Boy save | *.sav" 2>/dev/null]])
-        :format(prompt))
+      ([[zenity --file-selection --title="%s" --file-filter="%s | *.sav" 2>/dev/null]])
+        :format(prompt, saveFilter))
     if path then return path end
     return commandOutput(
-      [[kdialog --getopenfilename "$HOME" "*.sav|Game Boy save" 2>/dev/null]])
+      ([[kdialog --getopenfilename "$HOME" "*.sav|%s" 2>/dev/null]])
+        :format(saveFilter))
   end
   return nil
 end
@@ -1451,8 +1466,9 @@ function RomImporter:startData(data, displayName)
   self.importing = version
   self.workState = "working"
   self.notice = nil
-  self.status = AppLocale("Verifying %s", info.displayName)
-  self.detail = displayName or info.displayName
+  local gameName = AppLocale.gameName(version, info.displayName)
+  self.status = AppLocale("Verifying %s", gameName)
+  self.detail = displayName or gameName
   self.progress = 0
   self.romData = data
   self.worker = coroutine.create(function()
@@ -1509,7 +1525,7 @@ function RomImporter:startData(data, displayName)
       self.detail = AppLocale("%s imported. You may delete the copy from imports/ when finished.",
         displayName)
     else
-      self.detail = AppLocale("Starting %s...", info.displayName)
+      self.detail = AppLocale("Starting %s...", gameName)
     end
     self.progress = 1
     if self.launcher then
@@ -1668,9 +1684,10 @@ function RomImporter:_importSave(version, source, force)
     self.tab = version
   end
   if not self.ready[version] then
+    local gameInfo = GameVersion.info(version)
     self.saveNotice[version] = { ok = false,
       text = AppLocale("Import the %s ROM before importing a save.",
-        GameVersion.info(version).displayName) }
+        AppLocale.gameName(version, gameInfo.displayName)) }
     return
   end
   local ok, res, info = require("src.import.SaveFileIO").importToSlot(source, version, force)
@@ -1885,7 +1902,8 @@ function RomImporter:choose(version)
     end
     return
   end
-  local path = chooseRom(GameVersion.info(self.chooseVersion).displayName)
+  local info = GameVersion.info(self.chooseVersion)
+  local path = chooseRom(AppLocale.gameName(self.chooseVersion, info.displayName))
   if path then
     self:startPath(path)
     return
@@ -3301,7 +3319,8 @@ function RomImporter:_savesDefaultHint(version)
     local saveDir = love.filesystem.getSaveDirectory()
     local rel = RomImporter.mtpHintPath(saveDir)
     if rel ~= "" and rel:sub(-1) ~= "/" then rel = rel .. "/" end
-    local game = GameVersion.info(version).displayName
+    local info = GameVersion.info(version)
+    local game = AppLocale.gameName(version, info.displayName)
     return AppLocale("Copy a %s .sav via MTP into %s/%s/", game, saveDir, inbox)
       .. "\n" .. AppLocale("DBI MTP → 1: SD Card/%s%s/", rel, inbox)
   end

@@ -40,7 +40,10 @@ eq(AppLocale.get(), "es-ES", "Spanish can be selected")
 eq(AppLocale("Interface Language"), "Idioma de la interfaz",
    "the setting is explicitly Interface Language")
 eq(AppLocale.displayName("es-ES"), "Español", "Spanish display name is native")
-eq(AppLocale("RED"), "ROJO", "launcher navigation uses the application locale")
+eq(AppLocale.context("RED", "launcher.gameTab.red"), "ROJA",
+   "launcher game tabs use their own localization context")
+eq(AppLocale.gameName("red", "Pokemon Red"), "Edición Roja",
+   "application messages share the catalog game name")
 eq(AppLocale("Play %s", "Pokémon Rojo"), "Jugar a Pokémon Rojo",
    "launcher action labels preserve their dynamic game name")
 eq(AppLocale("Settings"), "Ajustes", "launcher settings use the application locale")
@@ -60,8 +63,12 @@ eq(AppLocale("Touch Controls"), "Controles táctiles",
 eq(AppLocale("Button size (%s)", AppLocale("Landscape")),
    "Tamaño de los botones (Horizontal)",
    "touch-editor dynamic orientation labels remain localized")
-eq(AppLocale("B"), "Az", "Spanish blue tab has an unambiguous abbreviation")
-eq(AppLocale("Y"), "Am", "Spanish yellow tab has an unambiguous abbreviation")
+eq(AppLocale.context("B", "launcher.gameTab.blue.short"), "Az",
+   "Spanish blue tab has an unambiguous abbreviation")
+eq(AppLocale.context("Y", "launcher.gameTab.yellow.short"), "Am",
+   "Spanish yellow tab has an unambiguous abbreviation")
+eq(AppLocale("B"), "B",
+   "a physical button label is not confused with the Blue game tab")
 eq(AppLocale("Untranslated application source"), "Untranslated application source",
    "missing application strings fall back to English")
 local message = AppMessage("Needs mod API %d; this build provides %d", 4, 2)
@@ -104,8 +111,85 @@ eq(AppLocale.get(), "en", "unknown locale falls back safely to English")
 eq(AppLocale.displayName("does-not-exist"), "English",
    "unknown locale has a safe display name")
 
-eq(AppLocale.cycle("en", 1), "es-ES", "locale cycle reaches Spanish")
-eq(AppLocale.cycle("es-ES", 1), "en", "locale cycle wraps to English")
+local expectedLocales = {
+  { id = "en", name = "English", review = "source", settings = "Settings",
+    red = "Red", yellowShort = "Y" },
+  { id = "es-ES", name = "Español", review = "native-reviewed", settings = "Ajustes",
+    red = "Edición Roja", yellowShort = "Am" },
+  { id = "fr-FR", name = "Français", review = "pending-native-review", settings = "Paramètres",
+    red = "Version Rouge", yellowShort = "J" },
+  { id = "de-DE", name = "Deutsch", review = "pending-native-review", settings = "Einstellungen",
+    red = "Rote Edition", yellowShort = "G" },
+  { id = "it-IT", name = "Italiano", review = "pending-native-review", settings = "Impostazioni",
+    red = "Versione Rossa", yellowShort = "G" },
+  { id = "pt-BR", name = "Português (Brasil)", review = "pending-native-review", settings = "Configurações",
+    red = "Red", yellowShort = "Y" },
+}
+local available = AppLocale.available()
+eq(#available, #expectedLocales, "every registered locale is available")
+for i, expected in ipairs(expectedLocales) do
+  local nextExpected = expectedLocales[(i % #expectedLocales) + 1]
+  local previousExpected = expectedLocales[((i - 2) % #expectedLocales) + 1]
+  eq(available[i].id, expected.id, "locale order includes " .. expected.id)
+  eq(available[i].name, expected.name,
+    expected.id .. " has its self-identifying language name")
+  eq(available[i].reviewStatus, expected.review,
+    expected.id .. " exposes its linguistic review status")
+  eq(AppLocale.cycle(expected.id, 1), nextExpected.id,
+    expected.id .. " cycles forward")
+  eq(AppLocale.cycle(expected.id, -1), previousExpected.id,
+    expected.id .. " cycles backward")
+  AppLocale.set(expected.id)
+  eq(AppLocale.get(), expected.id, expected.id .. " can be selected")
+  eq(AppLocale("Settings"), expected.settings,
+    expected.id .. " resolves a representative interface label")
+  eq(AppLocale.context("Red", "launcher.gameName.red"), expected.red,
+    expected.id .. " resolves the official Red version name")
+  eq(AppLocale.gameName("red", "Pokemon Red"),
+    expected.id == "en" and "Pokemon Red" or expected.red,
+    expected.id .. " centralizes game names without changing English copy")
+  eq(AppLocale.context("Y", "launcher.gameTab.yellow.short"),
+    expected.yellowShort,
+    expected.id .. " resolves an unambiguous Yellow tab abbreviation")
+end
+
+-- High-risk UI words are easy for machine translation to treat as ordinary
+-- prose (Run as physical running, Paste as dough, Close as nearby, and so
+-- on). Pin deliberate command choices and grammar-sensitive Settings values
+-- so those mistakes cannot silently return during a catalog update.
+local pinnedTerms = {
+  ["es-ES"] = {
+    ["CENTERED"] = "CENTRADO", ["DYNAMIC"] = "DINÁMICO",
+    ["HIGH"] = "ALTO", ["LOW"] = "BAJO",
+  },
+  ["fr-FR"] = {
+    Close = "Fermer", Paste = "Coller", Run = "Exécuter",
+    ["SHIFT"] = "CHOIX", ["UI LAYOUT"] = "DISPOSITION DE L’INTERFACE",
+  },
+  ["de-DE"] = {
+    Cancel = "Abbrechen", ["Import save"] = "Speicherstand importieren",
+    Paste = "Einfügen", Run = "Starten", ["BATTLE BG"] = "KAMPFHINTERGRUND",
+    ["SHIFT"] = "WECHSEL",
+  },
+  ["it-IT"] = {
+    Close = "Chiudi", Paste = "Incolla", Run = "Avvia",
+    ["Touch Controls"] = "Controlli touch",
+    ["SAVE SLOT"] = "SLOT DI SALVATAGGIO",
+  },
+  ["pt-BR"] = {
+    Ready = "Pronto", Run = "Executar", ["ON"] = "LIGADO",
+    ["MODS"] = "MODS", ["BATTLE BG"] = "FUNDO DA BATALHA",
+    ["UI LAYOUT"] = "DISPOSIÇÃO DA INTERFACE",
+  },
+}
+for locale, terms in pairs(pinnedTerms) do
+  AppLocale.set(locale)
+  for source, translated in pairs(terms) do
+    eq(AppLocale(source), translated,
+      locale .. " keeps the pinned UI term for " .. source)
+  end
+end
+AppLocale.set("en")
 
 -- Settings integration: options.lua is the persistence boundary.  The
 -- LauncherSettings model mutates that table in place; LauncherView calls
